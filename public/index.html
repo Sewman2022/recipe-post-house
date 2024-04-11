@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles.css">
+    <title>Recipe Manager</title>
+</head>
+<body>
+    
+    <h1>Recipe House!</h1>
+
+    <div class="flex-container">
+        <div class="add-section">
+            <h3>Add New Recipe</h2>
+                <form id="recipeForm">
+                    <input type="text" id="title" placeholder="Title" required /><br/><br/>
+                    <textarea id="ingredients" placeholder="Ingredients" required></textarea><br/><br/>
+                    <textarea id="instructions" placeholder="Instructions" required></textarea><br/><br/>
+                    <input type="text" id="cookingTime" placeholder="Cooking Time" required /><br/><br/>
+                    <button type="submit">Add Recipe</button>
+                </form>
+                <p id="message"></p>        
+        </div>
+        <div class="search-section">
+            <h3>Search by Title</h3>
+            <input type="text" id="searchTitle" placeholder="Enter title to search" required>
+            <button onclick="searchRecipeByTitle()">Search</button> <br><br>
+            <h3>Load All Recipes</h3>
+            <button onclick="loadRecipes()">View All Recipes</button>         
+        </div>
+    </div>
+    <div class="display-section">
+
+        <h2>Recipes</h2>
+        <table id="recipesTable">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Ingredients</th>
+                    <th>Instructions</th>
+                    <th>Cooking Time</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- The recipes will be inserted in this section -->
+            </tbody>
+        </table>
+
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            document.getElementById('recipeForm').addEventListener('submit', addRecipe);
+            loadRecipes();
+        });
+
+        document.addEventListener("DOMContentLoaded", function() {
+            document.getElementById('recipeForm').addEventListener('submit', addRecipe);
+            loadRecipes(); //load all recipes when the page is loaded.
+        });
+
+        function addRecipe(e) {
+            e.preventDefault();
+            const title = document.getElementById('title').value.trim();
+            const ingredients = document.getElementById('ingredients').value.split('\n').map(i => i.trim());
+            const instructions = document.getElementById('instructions').value.trim();
+            const cookingTime = document.getElementById('cookingTime').value.trim();
+            const recipeData = { title, ingredients, instructions, cookingTime };
+
+            fetch('/api/recipes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(recipeData),
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Error adding recipe');
+                return response.json();
+            })
+            .then(data => {
+                displayMessage('Recipe added successfully!');
+                document.getElementById('recipeForm').reset();
+                loadRecipes();
+            })
+            .catch(error => displayMessage(error.message));
+        }
+
+        function loadRecipes() {
+            fetch('/api/recipes')
+                .then(response => {
+                    if (!response.ok) throw new Error('Error loading recipes');
+                    return response.json();
+                })
+                .then(recipes => {
+                    const tbody = document.querySelector('#recipesTable tbody');
+                    tbody.innerHTML = '';
+                    recipes.forEach(recipe => {
+                        const tr = tbody.insertRow();
+                        tr.insertCell().textContent = recipe.title;
+                        tr.insertCell().textContent = recipe.ingredients.join(', ');
+                        tr.insertCell().textContent = recipe.instructions;
+                        tr.insertCell().textContent = recipe.cookingTime;
+                        const editButton = document.createElement('button');
+                        editButton.textContent = 'Edit';
+                        editButton.onclick = function() { startEditRecipe(tr, recipe); };
+                        const deleteButton = document.createElement('button');
+                        deleteButton.textContent = 'Delete';
+                        deleteButton.onclick = function() { deleteRecipe(recipe._id, tr); };
+                        const actionsCell = tr.insertCell();
+                        actionsCell.append(editButton, deleteButton);
+                    });
+                })
+                .catch(error => displayMessage(error.message));
+        }
+
+        function startEditRecipe(tr, recipe) {
+            // Convert row to editable fields
+            tr.innerHTML = `
+                <td><input type="text" value="${recipe.title}"></td>
+                <td><input type="text" value="${recipe.ingredients.join(', ')}"></td>
+                <td><input type="text" value="${recipe.instructions}"></td>
+                <td><input type="text" value="${recipe.cookingTime}"></td>
+                <td>
+                    <button onclick="saveRecipe(this.parentNode.parentNode, '${recipe._id}')">Save</button>
+                    <button onclick="loadRecipes()">Cancel</button>
+                </td>`;
+        }
+
+        function saveRecipe(tr, id) {
+            const updatedRecipe = {
+                title: tr.cells[0].querySelector('input').value,
+                ingredients: tr.cells[1].querySelector('input').value.split(',').map(ingredient => ingredient.trim()),
+                instructions: tr.cells[2].querySelector('input').value,
+                cookingTime: tr.cells[3].querySelector('input').value
+            };
+
+            fetch(`/api/recipes/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updatedRecipe)
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Failed to update the recipe');
+                return response.json();
+            })
+            .then(data => {
+                displayMessage('Recipe updated successfully!');
+                loadRecipes();  // Reload the recipes to reflect the changes
+            })
+            .catch(error => displayMessage(error.message));
+        }
+
+
+        function deleteRecipe(id, tr) {
+            if (confirm('Are you sure you want to delete this recipe?')) {
+                fetch(`/api/recipes/${id}`, {
+                    method: 'DELETE'
+                })
+                .then(response => {
+                    if (!response.ok) throw new Error('Error deleting recipe');
+                    tr.remove(); // If the API sends a status code, remove the table row directly
+                    displayMessage('Recipe deleted successfully!');
+                })
+                .catch(error => displayMessage(error.message));
+            }
+        }
+
+
+        function searchRecipeByTitle() {
+            const title = document.getElementById('searchTitle').value.trim();
+            fetch(`/api/recipes/title/${encodeURIComponent(title)}`)
+                .then(response => {
+                    if (!response.ok) throw new Error('Recipe not found');
+                    return response.json();
+                })
+                .then(recipe => {
+                    const tbody = document.querySelector('#recipesTable tbody');
+                    tbody.innerHTML = ''; // Clear the table
+                    const tr = tbody.insertRow();
+                    tr.insertCell().textContent = recipe.title;
+                    tr.insertCell().textContent = recipe.ingredients.join(', ');
+                    tr.insertCell().textContent = recipe.instructions;
+                    tr.insertCell().textContent = recipe.cookingTime;
+                    const editButton = document.createElement('button');
+                    editButton.textContent = 'Edit';
+                    editButton.onclick = function() { startEditRecipe(tr, recipe); };
+                    const deleteButton = document.createElement('button');
+                    deleteButton.textContent = 'Delete';
+                    deleteButton.onclick = function() { deleteRecipe(recipe._id, tr); };
+                    const actionsCell = tr.insertCell();
+                    actionsCell.append(editButton, deleteButton);
+                })
+                .catch(error => displayMessage(error.message));
+        }
+
+        function displayMessage(message) {
+            const messageParagraph = document.getElementById('message');
+            messageParagraph.textContent = message;
+            setTimeout(() => { messageParagraph.textContent = ''; }, 4000);
+        }
+</script>
+</body>
+</html>
+
+       
