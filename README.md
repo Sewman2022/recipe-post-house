@@ -24,7 +24,7 @@ git clone https://github.com/<your-username>/recipe-house.git
 
 cd recipe-post-house
 npm install
-npm run start
+npm start
 
 The application should now be running on localhost:5000.
 
